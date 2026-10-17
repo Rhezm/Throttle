@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icono.ico" width="96" alt="Throttle icon">
+  <img src="icon.ico" width="96" alt="Throttle icon">
 </p>
 
 <h1 align="center">Throttle</h1>
