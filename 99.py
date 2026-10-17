@@ -7,9 +7,7 @@ the pressure on the fly.
 Dependencies: pip install vgamepad keyboard mouse customtkinter pystray pillow
 
 Build (icono.ico next to 99.py):
-    python -m PyInstaller --onefile --noconsole --uac-admin --icon icono.ico ^
-        --add-data "icono.ico;." --hidden-import pystray._win32 ^
-        --collect-all vgamepad --collect-all customtkinter --exclude-module numpy 99.py
+    python -m PyInstaller --onefile --noconsole --uac-admin --icon icono.ico --add-data "icono.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy 99.py
 """
 
 import ctypes
