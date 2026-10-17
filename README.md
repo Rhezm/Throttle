@@ -89,13 +89,13 @@ The minimize button hides the window in the system tray. Double-click the tray i
 
 ```
 pip install vgamepad keyboard mouse customtkinter pystray pillow pyinstaller
-python 99.py
+python Throttle.py
 ```
 
 To build the executable (with `icono.ico` in the same folder):
 
 ```
-python -m PyInstaller --onefile --noconsole --uac-admin --icon icono.ico --add-data "icono.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy 99.py
+python -m PyInstaller --onefile --noconsole --uac-admin --icon icono.ico --add-data "icono.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy Throttle.py
 ```
 
 The executable is written to `dist\`.
