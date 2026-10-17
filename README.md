@@ -102,7 +102,7 @@ The executable is written to `dist\`.
 
 ## Disclaimer
 
-This tool only emulates a controller; it does not read or modify game memory. Even so, use in online games is at your own risk — the author can't guarantee how any game's anti-cheat will treat virtual controllers.
+This tool only emulates a controller; it does not read or modify game memory. Even so, use in online games is at your own risk — I can't guarantee how any game's anti-cheat will treat virtual controllers.
 
 ## Credits
 
