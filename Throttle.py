@@ -6,8 +6,8 @@ the pressure on the fly.
 
 Dependencies: pip install vgamepad keyboard mouse customtkinter pystray pillow
 
-Build (icono.ico next to Throttle.py):
-    python -m PyInstaller --onefile --noconsole --uac-admin --icon icono.ico --add-data "icono.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy Throttle.py
+Build (icon.ico next to Throttle.py):
+    python -m PyInstaller --onefile --noconsole --uac-admin --icon icon.ico --add-data "icon.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy Throttle.py
 """
 
 import ctypes
@@ -21,13 +21,13 @@ import customtkinter as ctk
 import keyboard
 import mouse
 import pystray
-import vgamepad as vg
 from PIL import Image
 
 APP_NAME = "Throttle"
 WIDTH = 380
 CANCEL_KEY = "esc"
 QUIT_HOTKEY = "ctrl+shift+q"
+RETRY_MS = 2000
 CONFIG_PATH = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME, "config.json")
 
 DEFAULT_CONFIG = {
@@ -75,7 +75,7 @@ def resource(name):
     return os.path.join(base, name)
 
 
-ICON_PATH = resource("icono.ico")
+ICON_PATH = resource("icon.ico")
 
 
 #Pressure and hotkey logic
@@ -111,6 +111,15 @@ def key_label(name):
     return name.upper() if len(name) == 1 else name.title()
 
 
+def create_gamepad():
+    import vgamepad
+    try:
+        return vgamepad.VX360Gamepad()
+    except Exception:
+        from vgamepad.win import virtual_gamepad
+        virtual_gamepad.VBUS = virtual_gamepad.VBus()
+        return vgamepad.VX360Gamepad()
+z    
 #Config
 
 def load_config():
@@ -169,6 +178,7 @@ class ThrottleApp(ctk.CTk):
         self.save_job = None
         self.pinned = False
         self.drag_offset = (0, 0)
+        self.retry_job = None
 
         self._build_ui()
         self._create_tray_icon()
@@ -176,15 +186,46 @@ class ThrottleApp(ctk.CTk):
         self.after(10, self._setup_window)
         self._update()
 
-        try:
-            self.pad = vg.VX360Gamepad()
-        except Exception as e:
-            self._show_error(f"Couldn't create the virtual controller.\nIs ViGEmBus installed?\n{e}")
-            return
-
-        self._bind_keys()
         keyboard.add_hotkey(QUIT_HOTKEY, lambda: self.events.put(("quit",)))
         mouse.hook(self._on_mouse_event)
+        self.connect_pad()
+
+    #Virtual controller
+
+    def connect_pad(self):
+        if self.retry_job:
+            self.after_cancel(self.retry_job)
+            self.retry_job = None
+        try:
+            pad = create_gamepad()
+        except Exception as e:
+            self._show_error(
+                "Couldn't connect to the ViGEmBus driver.\n"
+                f"Retrying every {RETRY_MS // 1000} s, or press Retry.\n({e})"
+            )
+            self.retry_job = self.after(RETRY_MS, self.connect_pad)
+            return
+        with self.pad_lock:
+            self.pad = pad
+        self._hide_error()
+        self._bind_keys()
+
+    def _on_pad_lost(self):
+        if not self.pad:
+            return
+        self._unbind_keys()
+        if self.capture_hook:
+            keyboard.unhook(self.capture_hook)
+            self.capture_hook = None
+            self.capture_target = None
+            self.key_button.configure(text="Change key", fg_color=BORDER, text_color=TEXT)
+            self.form_key_button.configure(text="Choose key", fg_color=BORDER, text_color=TEXT)
+        with self.pad_lock:
+            self.pad = None
+        self.pressed = False
+        self.key_down = False
+        self.show_page("main")
+        self.connect_pad()
 
     #Window
 
@@ -365,11 +406,12 @@ class ThrottleApp(ctk.CTk):
         footer.grid(row=7, column=0, columnspan=2, sticky="ew", padx=18, pady=(12, 16))
         self.hotkeys_button = self._button(footer, "", lambda: self.show_page("hotkeys"), width=150)
         self.hotkeys_button.pack(side="left")
+        self.retry_button = self._button(footer, "Retry", self.connect_pad, primary=True)
         self._button(footer, "Quit", self.quit_app).pack(side="right")
 
         self.error_hidden = [
             self.key_button, mode_label, self.mode_switch, pressure_label, self.percent_label, slider_row,
-            self.trigger_bar, self.trigger_label, quit_hint, self.hotkeys_button,
+            self.trigger_bar, self.trigger_label, quit_hint,
         ]
         self._refresh_percent()
         self._render_live()
@@ -520,9 +562,24 @@ class ThrottleApp(ctk.CTk):
 
     def _show_error(self, message):
         self._set_status("error")
-        self.description.configure(text=message, font=("Segoe UI", 11))
+        self.description.configure(text=message, font=("Segoe UI", 11), wraplength=300, justify="left")
+        if self.retry_button.winfo_manager():
+            return
         for widget in self.error_hidden:
-            widget.grid_remove() if widget.winfo_manager() == "grid" else widget.pack_forget()
+            widget.grid_remove()
+        self.hotkeys_button.pack_forget()
+        self.retry_button.pack(side="left")
+        self._fit_height()
+
+    def _hide_error(self):
+        if not self.retry_button.winfo_manager():
+            return
+        self.description.configure(font=("Segoe UI", 13), wraplength=0)
+        for widget in self.error_hidden:
+            widget.grid()
+        self.retry_button.pack_forget()
+        self.hotkeys_button.pack(side="left")
+        self._render_live()
         self._fit_height()
 
     #Pressure
@@ -695,13 +752,17 @@ class ThrottleApp(ctk.CTk):
     def _send_trigger(self):
         value = percent_to_trigger(self.config_data["percent"]) if self.pressed else 0
         with self.pad_lock:
-            self.pad.right_trigger(value=value)
-            self.pad.update()
+            if not self.pad:
+                return
+            try:
+                self.pad.right_trigger(value=value)
+                self.pad.update()
+            except Exception:
+                self.events.put(("pad_lost",))
 
     def _engage(self, on):
         self.pressed = on
-        if self.pad:
-            self._send_trigger()
+        self._send_trigger()
 
     def _on_throttle_event(self, event):
         toggle = self.config_data["mode"] == "toggle"
@@ -717,7 +778,7 @@ class ThrottleApp(ctk.CTk):
 
     def _on_mouse_event(self, event):
         wheel = self.config_data["wheel"]
-        if not isinstance(event, mouse.WheelEvent) or not wheel["enabled"] or self.capture_target:
+        if not self.pad or not isinstance(event, mouse.WheelEvent) or not wheel["enabled"] or self.capture_target:
             return
         if wheel["only_while_active"] and not self.pressed:
             return
@@ -770,6 +831,8 @@ class ThrottleApp(ctk.CTk):
                 self.set_percent(self.config_data["percent"] + event[1])
             elif kind == "hotkey":
                 self._run_hotkey(event[1])
+            elif kind == "pad_lost":
+                self._on_pad_lost()
 
         state = self.pressed
         if state != last_state and not self.capture_target:
@@ -780,13 +843,18 @@ class ThrottleApp(ctk.CTk):
         if self.save_job:
             self.after_cancel(self.save_job)
             self._save()
+        if self.retry_job:
+            self.after_cancel(self.retry_job)
         keyboard.unhook_all()
         mouse.unhook_all()
         self.tray.stop()
-        if self.pad:
-            with self.pad_lock:
-                self.pad.reset()
-                self.pad.update()
+        with self.pad_lock:
+            if self.pad:
+                try:
+                    self.pad.reset()
+                    self.pad.update()
+                except Exception:
+                    pass
         self.destroy()
 
 
