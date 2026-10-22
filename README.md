@@ -84,6 +84,7 @@ The minimize button hides the window in the system tray. Double-click the tray i
   reg add HKCU\System\GameConfigStore /f /t REG_DWORD /v GameDVR_Enabled /d 0
   ```
 - **The "<" key doesn't exist on US keyboards.** Use **Change key** to pick any other key.
+- **"Couldn't connect to the ViGEmBus driver."** Throttle retries automatically every 3 seconds, so there's no need to restart it: install the driver or wait for it to start and the window connects by itself. You can also press **Retry**. If the driver stops while the app is running, it reconnects the same way.
 
 ## Build from source
 
@@ -92,10 +93,10 @@ pip install vgamepad keyboard mouse customtkinter pystray pillow pyinstaller
 python Throttle.py
 ```
 
-To build the executable (with `icono.ico` in the same folder):
+To build the executable (with `icon.ico` in the same folder):
 
 ```
-python -m PyInstaller --onefile --noconsole --uac-admin --icon icono.ico --add-data "icono.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy Throttle.py
+python -m PyInstaller --onefile --noconsole --uac-admin --icon icon.ico --add-data "icon.ico;." --hidden-import pystray._win32 --collect-all vgamepad --collect-all customtkinter --exclude-module numpy Throttle.py
 ```
 
 The executable is written to `dist\`.
